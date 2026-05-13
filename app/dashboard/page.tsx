@@ -5,7 +5,6 @@ import { CommandPanel } from "@/components/dashboard/CommandPanel";
 import { EventLog } from "@/components/dashboard/EventLog";
 import { ProgressPanel } from "@/components/dashboard/ProgressPanel";
 import { RunOverviewCards } from "@/components/dashboard/RunOverviewCards";
-import { WorkersTable } from "@/components/dashboard/WorkersTable";
 import { mockDashboardSnapshot } from "@/features/dashboard/mockData";
 
 // Phase 1 boundary: this page renders mock-only snapshot data.
@@ -20,7 +19,6 @@ export default function DashboardPage() {
         <RunOverviewCards snapshot={snapshot} />
         <ProgressPanel snapshot={snapshot} />
         <ClusterTopology snapshot={snapshot} />
-        <WorkersTable snapshot={snapshot} />
         <ChunksTable chunks={snapshot.chunks} />
         <EventLog events={snapshot.events} />
         <CommandPanel />
