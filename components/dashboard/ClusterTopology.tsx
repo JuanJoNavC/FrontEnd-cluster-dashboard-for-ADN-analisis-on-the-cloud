@@ -6,7 +6,7 @@ import { workerStatusStyles } from "@/features/dashboard/statusStyles";
 import { workerStatusLabels } from "@/features/dashboard/translations";
 import { StatusBadge } from "./StatusBadge";
 
-function WorkerCard({ worker }: { worker: WorkerNode }) {
+function WorkerCard({ worker, runId }: { worker: WorkerNode; runId: string }) {
   const [showActions, setShowActions] = useState(false);
   const [lastAction, setLastAction] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -25,11 +25,24 @@ function WorkerCard({ worker }: { worker: WorkerNode }) {
     }
   }, [showActions]);
 
-  const handleAction = (action: string, label: string) => {
-    setLastAction(label);
+  const handleAction = async (action: string, label: string) => {
+    setLastAction(`${label}...`);
     setShowActions(false);
-    console.log(`Acción: ${action} en worker: ${worker.nodeId}`);
-    // En fase real, aquí se enviaría comando a la API
+    try {
+      const res = await fetch("/api/worker/command", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "worker",
+          command: action,
+          nodeId: worker.nodeId,
+          runId,
+        }),
+      });
+      setLastAction(res.ok ? `✓ ${label}` : `✗ ${label} (error)`);
+    } catch {
+      setLastAction(`✗ ${label} (sin conexión)`);
+    }
   };
 
   return (
@@ -113,7 +126,7 @@ function WorkerCard({ worker }: { worker: WorkerNode }) {
   );
 }
 
-export function ClusterTopology({ snapshot }: { snapshot: DashboardSnapshot }) {
+export function ClusterTopology({ snapshot, runId }: { snapshot: DashboardSnapshot; runId: string }) {
   const leader = snapshot.workers.find((w) => w.nodeId === snapshot.cluster.leaderNodeId);
   const workers = snapshot.workers.filter((w) => w.role !== "LEADER");
 
@@ -161,7 +174,7 @@ export function ClusterTopology({ snapshot }: { snapshot: DashboardSnapshot }) {
       {/* WORKERS - Más pequeños, en grid */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 mb-6">
         {workers.map((worker) => (
-          <WorkerCard key={worker.nodeId} worker={worker} />
+          <WorkerCard key={worker.nodeId} worker={worker} runId={runId} />
         ))}
       </div>
 

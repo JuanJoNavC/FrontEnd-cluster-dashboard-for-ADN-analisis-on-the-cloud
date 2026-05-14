@@ -1,7 +1,12 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { formatTimestamp } from "@/features/dashboard/formatters";
 import type { DashboardSnapshot } from "@/features/dashboard/types";
 
 export function ClusterHeader({ snapshot }: { snapshot: DashboardSnapshot }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const healthColor = 
     snapshot.cluster.health === "HEALTHY" ? "bg-emerald-400" :
     snapshot.cluster.health === "DEGRADED" ? "bg-amber-400" :
@@ -27,7 +32,7 @@ export function ClusterHeader({ snapshot }: { snapshot: DashboardSnapshot }) {
             <div className={`h-3 w-3 rounded-full ${snapshot.cluster.redisConnected ? "bg-emerald-400 animate-pulse" : "bg-red-400"}`} />
             <strong>{snapshot.cluster.redisConnected ? "CONECTADO" : "DESCONECTADO"}</strong>
           </div>
-          <span>Actualizado: <strong>{formatTimestamp(snapshot.cluster.lastUpdatedAt)}</strong></span>
+          <span>Actualizado: <strong>{mounted ? formatTimestamp(snapshot.cluster.lastUpdatedAt) : "..."}</strong></span>
           <div className="flex items-center gap-2">
             <div className={`h-3 w-3 rounded-full ${healthColor} animate-pulse`} />
             <span className="text-xs font-medium">{healthText}</span>
