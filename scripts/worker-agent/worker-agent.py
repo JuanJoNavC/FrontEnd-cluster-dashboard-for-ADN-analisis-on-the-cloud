@@ -41,6 +41,10 @@ PRIORITY       = int(os.environ.get("PRIORITY",   "50"))
 CAN_BE_LEADER  = os.environ.get("CAN_BE_LEADER",  "true").lower() == "true"
 CONCURRENCY    = int(os.environ.get("CONCURRENCY","4"))
 
+# Nombre del proceso de comparación de ADN a controlar (como aparece en `ps aux`)
+# Ejemplos: "dna_worker.py", "java -jar dna-worker", "dna-compare"
+WORKER_PROCESS = os.environ.get("WORKER_PROCESS", "")
+
 HEARTBEAT_INTERVAL = 10   # segundos entre heartbeats
 HEARTBEAT_TTL      = 30   # segundos antes de que Redis expire el heartbeat
 COMMAND_POLL_MS    = 1000 # milisegundos entre polls al stream de comandos
@@ -122,7 +126,43 @@ def get_memory_usage() -> int:
     except Exception:
         return 0
 
-# ─── Publicar evento ──────────────────────────────────────────────────────────
+# ─── Control del proceso real de comparación de ADN ──────────────────────────
+
+def find_worker_pids() -> list[int]:
+    """Busca los PIDs del proceso de comparación de ADN usando pgrep."""
+    if not WORKER_PROCESS:
+        return []
+    try:
+        result = subprocess.run(
+            ["pgrep", "-f", WORKER_PROCESS],
+            capture_output=True, text=True
+        )
+        return [int(p) for p in result.stdout.strip().splitlines() if p.strip().isdigit()]
+    except Exception as e:
+        logger.warning(f"[proceso] No se pudo buscar PIDs: {e}")
+        return []
+
+def signal_worker_process(sig: int, action_name: str):
+    """Envía una señal a todos los PIDs del proceso worker."""
+    if not WORKER_PROCESS:
+        logger.info(f"[proceso] WORKER_PROCESS no configurado — solo se actualizó el estado en Redis")
+        return
+
+    pids = find_worker_pids()
+    if not pids:
+        logger.warning(f"[proceso] No se encontraron procesos que coincidan con '{WORKER_PROCESS}'")
+        return
+
+    for pid in pids:
+        try:
+            os.kill(pid, sig)
+            logger.info(f"[proceso] {action_name} enviado al PID {pid} ({WORKER_PROCESS})")
+        except ProcessLookupError:
+            logger.warning(f"[proceso] PID {pid} ya no existe")
+        except PermissionError:
+            logger.error(f"[proceso] Sin permisos para señalizar PID {pid} — ¿corres como root o el mismo usuario?")
+
+
 
 def publish_event(r, severity: str, event_type: str, message: str, chunk_id: str = ""):
     try:
@@ -146,12 +186,14 @@ def execute_command(r, command: str, state: NodeState, fields: dict):
 
     if command == "pause":
         state.set_status("PAUSED")
+        signal_worker_process(signal.SIGSTOP, "SIGSTOP (pausa)")
         publish_event(r, "warning", "node_paused",
                       f"Nodo {NODE_ID} pausado por el dashboard")
 
     elif command == "resume":
         if state.status in ("PAUSED", "DRAINING"):
             state.set_status("ACTIVE")
+            signal_worker_process(signal.SIGCONT, "SIGCONT (reanuda)")
             publish_event(r, "success", "node_resumed",
                           f"Nodo {NODE_ID} reanudado por el dashboard")
         else:
@@ -159,34 +201,39 @@ def execute_command(r, command: str, state: NodeState, fields: dict):
 
     elif command == "drain":
         state.set_status("DRAINING")
+        # SIGTERM suave: el proceso termina el job actual y no toma nuevos
+        # El proceso de ADN debe manejar SIGTERM para completar el chunk actual
+        signal_worker_process(signal.SIGTERM, "SIGTERM (drenar)")
         publish_event(r, "warning", "node_draining",
                       f"Nodo {NODE_ID} iniciando drenaje de carga")
 
     elif command == "disable":
         state.set_status("DISABLED")
+        signal_worker_process(signal.SIGKILL, "SIGKILL (deshabilitar)")
         r.srem(key_nodes_active(), NODE_ID)
         publish_event(r, "error", "node_disabled",
                       f"Nodo {NODE_ID} deshabilitado por el dashboard")
-        logger.warning("[comando] Nodo deshabilitado. Detener proceso manualmente si es necesario.")
+        logger.warning("[comando] Nodo deshabilitado. Proceso terminado.")
 
     elif command == "pause_run":
-        # El líder debería manejar esto; el worker simplemente se pausa
         if state.status == "ACTIVE":
             state.set_status("PAUSED")
+            signal_worker_process(signal.SIGSTOP, "SIGSTOP (pausa por run)")
         publish_event(r, "warning", "run_paused", f"Run {RUN_ID} pausado")
 
     elif command == "resume_run":
         if state.status == "PAUSED":
             state.set_status("ACTIVE")
+            signal_worker_process(signal.SIGCONT, "SIGCONT (reanuda por run)")
         publish_event(r, "success", "run_resumed", f"Run {RUN_ID} reanudado")
 
     elif command == "cancel_run":
         state.set_status("DISABLED")
+        signal_worker_process(signal.SIGKILL, "SIGKILL (cancelar run)")
         r.srem(key_nodes_active(), NODE_ID)
         publish_event(r, "error", "run_cancelled", f"Run {RUN_ID} cancelado")
 
     elif command in ("retry_failed", "rebuild_output"):
-        # Solo el líder procesa estos — loguear y continuar
         publish_event(r, "info", f"command_{command}",
                       f"Comando {command} recibido en {NODE_ID}")
 

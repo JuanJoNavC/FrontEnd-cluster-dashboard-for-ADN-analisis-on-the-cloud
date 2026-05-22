@@ -18,6 +18,9 @@ PROVIDER="AWS"                      # AWS | GCP | ORACLE | LOCAL
 PRIORITY="100"
 CAN_BE_LEADER="true"
 CONCURRENCY="4"
+# Nombre del proceso del worker de ADN (como aparece en `ps aux`)
+# El agente enviará señales a este proceso cuando lleguen comandos del dashboard
+WORKER_PROCESS="dna_worker.py"
 # ═══════════════════════════════════════════════════════════════════════════════
 
 INSTALL_DIR="/opt/worker-agent"
@@ -55,6 +58,7 @@ PROVIDER=$PROVIDER
 PRIORITY=$PRIORITY
 CAN_BE_LEADER=$CAN_BE_LEADER
 CONCURRENCY=$CONCURRENCY
+WORKER_PROCESS=$WORKER_PROCESS
 EOF
 chmod 600 "$INSTALL_DIR/.env"
 
