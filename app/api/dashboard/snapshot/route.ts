@@ -38,25 +38,44 @@ async function readSnapshotFromRedis(
   }
 
   // ── 2. Estado del run ──────────────────────────────────────────────────────
-  const runStats = await redis.hgetall(KEYS.runStats(runId));
-  if (!runStats || Object.keys(runStats).length === 0) {
-    // No hay datos del run en Redis → aún no arrancó
+  // El backend escribe el status en dos sitios:
+  //   runs:{runId}:status  → STRING con el estado actual (IDLE/RUNNING/COMPLETED...)
+  //   runs:{runId}:stats   → HASH con métricas agregadas
+  const [runStatusRaw, runStats] = await Promise.all([
+    redis.get(`runs:${runId}:status`),
+    redis.hgetall(KEYS.runStats(runId)),
+  ]);
+
+  // Si no hay ni status ni stats → el run aún no arrancó
+  if (!runStatusRaw && (!runStats || Object.keys(runStats).length === 0)) {
     return null;
   }
 
-  const totalChunks = safeParseInt(runStats.totalChunks, 0);
-  const completedChunks = safeParseInt(runStats.completedChunks, 0);
-  const processingChunks = safeParseInt(runStats.processingChunks, 0);
-  const pendingChunks = safeParseInt(runStats.pendingChunks, 0);
-  const failedChunks = safeParseInt(runStats.failedChunks, 0);
-  const retryingChunks = safeParseInt(runStats.retryingChunks, 0);
-  const totalBases = safeParseInt(runStats.totalBases, 0);
-  const matches = safeParseInt(runStats.matches, 0);
-  const mismatches = safeParseInt(runStats.mismatches, 0);
+  const stats = runStats ?? {};
+  const totalChunks = safeParseInt(stats.totalChunks, 0);
+  const processingChunks = safeParseInt(stats.processingChunks, 0);
+  const failedChunks = safeParseInt(stats.failedChunks, 0);
+  const retryingChunks = safeParseInt(stats.retryingChunks, 0);
+  const totalBases = safeParseInt(stats.totalBases, 0);
+  const matches = safeParseInt(stats.matches, 0);
+  const mismatches = safeParseInt(stats.mismatches, 0);
+
+  // completedChunks: preferir SCARD del SET que el backend mantiene
+  const completedFromSet = await redis.scard(`runs:${runId}:chunks:done`);
+  const completedChunks = completedFromSet > 0
+    ? completedFromSet
+    : safeParseInt(stats.completedChunks, 0);
+  const pendingChunks = safeParseInt(
+    stats.pendingChunks,
+    Math.max(0, totalChunks - completedChunks - processingChunks - failedChunks - retryingChunks)
+  );
+
+  // Estado: STRING separado tiene prioridad sobre el campo del HASH
+  const runStatus = (runStatusRaw ?? stats.status ?? "IDLE") as RunStatus;
 
   const run = {
     runId,
-    status: (runStats.status ?? "IDLE") as RunStatus,
+    status: runStatus,
     totalBases,
     totalChunks,
     completedChunks,
@@ -70,10 +89,10 @@ async function readSnapshotFromRedis(
     mismatches,
     similarityPercentage:
       totalBases > 0
-        ? safeParseFloat(runStats.similarityPercentage, (matches / totalBases) * 100)
+        ? safeParseFloat(stats.similarityPercentage, (matches / totalBases) * 100)
         : null,
-    startedAt: runStats.startedAt ?? null,
-    finishedAt: runStats.finishedAt ?? null,
+    startedAt: stats.startedAt ?? null,
+    finishedAt: stats.finishedAt ?? null,
   };
 
   // ── 3. Líder actual ────────────────────────────────────────────────────────
@@ -120,14 +139,15 @@ async function readSnapshotFromRedis(
         priority: safeParseInt(data.priority, 50),
         canBeLeader: data.canBeLeader === true || data.canBeLeader === "true",
         heartbeatAgeSeconds,
-        cpuUsagePercent: safeParseInt(data.cpuUsage, 0),
-        memoryUsagePercent: safeParseInt(data.memoryUsage, 0),
+        // El backend puede enviar cpu_usage, cpuUsage o cpu
+        cpuUsagePercent: safeParseInt(data.cpuUsage ?? data.cpu_usage ?? data.cpu, 0),
+        memoryUsagePercent: safeParseInt(data.memoryUsage ?? data.memory_usage ?? data.memory, 0),
         concurrency: safeParseInt(data.concurrency, 1),
-        activeJobs: safeParseInt(data.activeJobs, 0),
-        completedJobs: safeParseInt(data.completedJobs, 0),
-        failedJobs: safeParseInt(data.failedJobs, 0),
-        currentChunkId: data.currentChunkId ?? null,
-        provider: data.provider ?? "LOCAL",
+        activeJobs: safeParseInt(data.activeJobs ?? data.active_jobs, 0),
+        completedJobs: safeParseInt(data.completedJobs ?? data.completed_jobs, 0),
+        failedJobs: safeParseInt(data.failedJobs ?? data.failed_jobs, 0),
+        currentChunkId: data.currentChunkId ?? data.current_chunk ?? null,
+        provider: (data.provider ?? "LOCAL").toUpperCase(),
       });
     } catch {
       // Heartbeat malformado, saltar
@@ -166,12 +186,13 @@ async function readSnapshotFromRedis(
       start: safeParseInt(data.start, 0),
       end: safeParseInt(data.end, 0),
       status: (data.status ?? "PENDING") as ChunkInfo["status"],
-      workerId: data.workerId || null,
+      // El backend escribe el campo como 'worker' (no 'workerId')
+      workerId: data.workerId ?? data.worker ?? null,
       matches: data.matches ? safeParseInt(data.matches) : null,
       mismatches: data.mismatches ? safeParseInt(data.mismatches) : null,
-      attempts: safeParseInt(data.attempts, 1),
+      attempts: safeParseInt(data.attempts ?? data.retries, 1),
       checksum: data.checksum ?? null,
-      updatedAt: data.updatedAt ?? new Date().toISOString(),
+      updatedAt: data.updatedAt ?? data.updated_at ?? new Date().toISOString(),
     });
   }
 
