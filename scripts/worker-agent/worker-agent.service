@@ -1,0 +1,26 @@
+[Unit]
+Description=Worker Agent — Dashboard ADN Cloud
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/worker-agent
+
+# ── Variables de entorno ──────────────────────────────────────────────────────
+# Editar estos valores antes de instalar
+EnvironmentFile=/opt/worker-agent/.env
+
+ExecStart=/usr/bin/python3 /opt/worker-agent/worker-agent.py
+
+# Reiniciar automáticamente si el proceso muere
+Restart=always
+RestartSec=5
+
+# Logs en journald (ver con: journalctl -u worker-agent -f)
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
