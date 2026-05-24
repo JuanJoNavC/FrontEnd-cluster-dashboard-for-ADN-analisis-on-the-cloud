@@ -12,6 +12,7 @@ export type RunStatus =
   | "PREPARING"
   | "RUNNING"
   | "PAUSED"
+  | "REDUCING"
   | "REBUILDING"
   | "COMPLETED"
   | "FAILED"
