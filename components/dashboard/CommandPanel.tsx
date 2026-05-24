@@ -8,6 +8,10 @@ type RunCommand = "start_run" | "pause_run" | "resume_run" | "retry_failed" | "r
 interface CommandPanelProps {
   runId: string;
   status: RunStatus;
+  source: "redis" | "mock";
+  leaderNodeId: string | null;
+  processingChunks: number;
+  completedChunks: number;
 }
 
 async function sendRunCommand(runId: string, command: RunCommand): Promise<boolean> {
@@ -52,7 +56,11 @@ const isActive = (s: RunStatus) => s === "RUNNING" || s === "REDUCING" || s === 
 const isPaused = (s: RunStatus) => s === "PAUSED";
 const isFinished = (s: RunStatus) => s === "COMPLETED" || s === "FAILED" || s === "CANCELLED";
 
-export function CommandPanel({ runId, status }: CommandPanelProps) {
+export function CommandPanel({ runId, status, source, leaderNodeId, processingChunks, completedChunks }: CommandPanelProps) {
+  // Si los datos vienen del mock, el backend no tiene run activo → tratar como IDLE
+  const effectiveStatus: RunStatus = source === "mock" ? "IDLE" : status;
+  // Run "bloqueado": RUNNING pero sin líder y sin progreso
+  const isStalled = source === "redis" && status === "RUNNING" && !leaderNodeId && processingChunks === 0 && completedChunks === 0;
   const [sending, setSending] = useState<RunCommand | null>(null);
   const [lastCommand, setLastCommand] = useState<string>("ninguno");
 
@@ -70,13 +78,38 @@ export function CommandPanel({ runId, status }: CommandPanelProps) {
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-zinc-100">Panel de Control</h2>
         <div className="flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1">
-          <div className={`h-2.5 w-2.5 rounded-full ${STATUS_COLORS[status]}`} />
-          <span className="text-sm font-medium text-zinc-200">{STATUS_LABELS[status]}</span>
+          <div className={`h-2.5 w-2.5 rounded-full ${STATUS_COLORS[effectiveStatus]}`} />
+          <span className="text-sm font-medium text-zinc-200">{STATUS_LABELS[effectiveStatus]}</span>
+          {source === "mock" && (
+            <span className="text-xs text-zinc-500 ml-1">(sin datos reales)</span>
+          )}
         </div>
       </div>
 
+      {/* Alerta: run bloqueado - RUNNING sin líder ni progreso */}
+      {isStalled && (
+        <div className="mb-4 rounded-lg border border-amber-700 bg-amber-900/20 p-3">
+          <p className="text-sm text-amber-300 font-medium mb-1">⚠ Run bloqueado — sin líder electo</p>
+          <p className="text-xs text-amber-400/80 mb-3">
+            El run está marcado como RUNNING pero ningún worker ha asumido el rol de líder.
+            Envía el comando <code className="bg-amber-900/40 px-1 rounded">start_run</code> para reactivar el procesamiento.
+          </p>
+          <button
+            onClick={() => handleCommand("start_run", "Iniciar procesamiento")}
+            disabled={isLoading}
+            className="w-full rounded-lg border-2 border-emerald-500 bg-emerald-600/20 px-4 py-3 text-base font-bold text-emerald-300 hover:bg-emerald-600/40 transition-all disabled:opacity-60 flex items-center justify-center gap-2"
+          >
+            {sending === "start_run" ? (
+              <span className="animate-pulse">Enviando comando...</span>
+            ) : (
+              <><span>▶</span> Iniciar Procesamiento</>
+            )}
+          </button>
+        </div>
+      )}
+
       {/* Botón principal cuando el run está detenido */}
-      {(isIdle(status) || isFinished(status)) && (
+      {(isIdle(effectiveStatus) || isFinished(effectiveStatus)) && (
         <button
           onClick={() => handleCommand("start_run", "Ejecutar programa")}
           disabled={isLoading}
@@ -87,16 +120,16 @@ export function CommandPanel({ runId, status }: CommandPanelProps) {
           ) : (
             <>
               <span className="text-2xl">▶</span>
-              {isIdle(status) ? "Ejecutar Programa" : "Reiniciar Programa"}
+              {isIdle(effectiveStatus) ? "Ejecutar Programa" : "Reiniciar Programa"}
             </>
           )}
         </button>
       )}
 
       {/* Controles cuando está activo o pausado */}
-      {(isActive(status) || isPaused(status)) && (
+      {(isActive(effectiveStatus) || isPaused(effectiveStatus)) && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-4">
-          {isActive(status) && (
+          {isActive(effectiveStatus) && (
             <button
               onClick={() => handleCommand("pause_run", "Pausar run")}
               disabled={isLoading}
@@ -105,7 +138,7 @@ export function CommandPanel({ runId, status }: CommandPanelProps) {
               {sending === "pause_run" ? "..." : "⏸ Pausar"}
             </button>
           )}
-          {isPaused(status) && (
+          {isPaused(effectiveStatus) && (
             <button
               onClick={() => handleCommand("resume_run", "Reanudar run")}
               disabled={isLoading}
