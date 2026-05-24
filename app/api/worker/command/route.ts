@@ -4,7 +4,7 @@ import redis from "@/lib/redis";
 import KEYS from "@/lib/redis-keys";
 
 type WorkerCommand = "pause" | "resume" | "drain" | "disable";
-type RunCommand = "pause_run" | "resume_run" | "retry_failed" | "rebuild_output" | "cancel_run";
+type RunCommand = "start_run" | "pause_run" | "resume_run" | "retry_failed" | "rebuild_output" | "cancel_run";
 
 type CommandPayload =
   | { type: "worker"; command: WorkerCommand; nodeId: string; runId: string }
@@ -14,6 +14,7 @@ type CommandPayload =
 
 const VALID_WORKER_COMMANDS: WorkerCommand[] = ["pause", "resume", "drain", "disable"];
 const VALID_RUN_COMMANDS: RunCommand[] = [
+  "start_run",
   "pause_run",
   "resume_run",
   "retry_failed",

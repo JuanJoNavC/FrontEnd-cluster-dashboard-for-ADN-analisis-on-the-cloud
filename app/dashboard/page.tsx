@@ -63,7 +63,7 @@ export default function DashboardPage() {
         <ClusterTopology snapshot={snapshot} runId={RUN_ID} />
         <ChunksTable chunks={snapshot.chunks} />
         <EventLog events={snapshot.events} />
-        <CommandPanel runId={RUN_ID} />
+        <CommandPanel runId={RUN_ID} status={snapshot.run.status} />
       </div>
     </main>
   );
