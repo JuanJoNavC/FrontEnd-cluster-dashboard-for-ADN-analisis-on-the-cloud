@@ -47,12 +47,13 @@ export interface WorkerNode {
   heartbeatAgeSeconds: number;
   cpuUsagePercent: number;
   memoryUsagePercent: number;
+  gpuUsagePercent: number | null;
   concurrency: number;
   activeJobs: number;
   completedJobs: number;
   failedJobs: number;
   currentChunkId: string | null;
-  provider: "AWS" | "AZURE" | "GCP" | "LOCAL";
+  provider: "AWS" | "AZURE" | "GCP" | "ORACLE" | "LOCAL";
 }
 
 export interface ChunkInfo {
