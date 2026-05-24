@@ -41,9 +41,11 @@ async function readSnapshotFromRedis(
   // El backend escribe el status en dos sitios:
   //   runs:{runId}:status  → STRING con el estado actual (IDLE/RUNNING/COMPLETED...)
   //   runs:{runId}:stats   → HASH con métricas agregadas
-  const [runStatusRaw, runStats] = await Promise.all([
+  //   runs:{runId}:meta    → HASH con metadata del run (comparable_size, total_chunks, etc.)
+  const [runStatusRaw, runStats, runMeta] = await Promise.all([
     redis.get(`runs:${runId}:status`),
     redis.hgetall(KEYS.runStats(runId)),
+    redis.hgetall(`runs:${runId}:meta`),
   ]);
 
   // Si no hay ni status ni stats → el run aún no arrancó
@@ -52,11 +54,13 @@ async function readSnapshotFromRedis(
   }
 
   const stats = runStats ?? {};
-  const totalChunks = safeParseInt(stats.totalChunks, 0);
+  const meta = runMeta ?? {};
+  const totalChunks = safeParseInt(stats.totalChunks ?? meta.total_chunks, 0);
   const processingChunks = safeParseInt(stats.processingChunks, 0);
   const failedChunks = safeParseInt(stats.failedChunks, 0);
   const retryingChunks = safeParseInt(stats.retryingChunks, 0);
-  const totalBases = safeParseInt(stats.totalBases, 0);
+  // comparable_size del meta es el número de bases (bytes) comparables
+  const totalBases = safeParseInt(stats.totalBases, 0) || safeParseInt(meta.comparable_size, 0);
   const matches = safeParseInt(stats.matches, 0);
   const mismatches = safeParseInt(stats.mismatches, 0);
 
@@ -103,7 +107,8 @@ async function readSnapshotFromRedis(
   if (leaderRaw) {
     try {
       const parsed = JSON.parse(leaderRaw);
-      leaderNodeId = parsed.nodeId ?? null;
+      // El backend escribe node_id (snake_case); soportar ambas variantes
+      leaderNodeId = parsed.node_id ?? parsed.nodeId ?? null;
       leaderEpoch = parsed.epoch ?? null;
     } catch {
       // Lock malformado, ignorar
@@ -182,7 +187,7 @@ async function readSnapshotFromRedis(
     const chunkId = key.split(":").pop() ?? key;
     chunks.push({
       chunkId,
-      chunkIndex: safeParseInt(data.chunkIndex, 0),
+      chunkIndex: safeParseInt(data.chunkIndex ?? data.chunk_index, 0),
       start: safeParseInt(data.start, 0),
       end: safeParseInt(data.end, 0),
       status: (data.status ?? "PENDING") as ChunkInfo["status"],
