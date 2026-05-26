@@ -125,6 +125,46 @@ export async function POST(request: NextRequest) {
   // Mantener el stream de eventos acotado (máx 200 entradas)
   await redis.xtrim(KEYS.eventsStream(payload.runId), "MAXLEN", "~", 200);
 
+  // ── Acción inmediata para start_run: resetear el run en Redis ───────────────
+  if (payload.type === "run" && payload.command === "start_run") {
+    const { runId } = payload;
+
+    // 1. Resetear TODOS los chunks del run a PENDING
+    const chunkKeys = await redis.keys(`chunk:${runId}:*`);
+    if (chunkKeys.length > 0) {
+      const pipeline = redis.pipeline();
+      for (const key of chunkKeys) {
+        pipeline.hset(key,
+          "status", "PENDING",
+          "workerId", "",
+          "attempts", "0",
+        );
+      }
+      await pipeline.exec();
+    }
+
+    // 2. Resetear stats del run
+    await redis.hset(KEYS.runStats(runId),
+      "status", "IDLE",
+      "completedChunks", "0",
+      "processingChunks", "0",
+      "failedChunks", "0",
+      "retryingChunks", "0",
+      "pendingChunks", String(chunkKeys.length),
+    );
+
+    // 3. Registrar evento
+    await redis.xadd(
+      KEYS.eventsStream(runId), "*",
+      "timestamp", timestamp,
+      "severity", "info",
+      "eventType", "run_reset",
+      "message", `Run ${runId} reseteado a IDLE — ${chunkKeys.length} chunks listos para procesar`
+    );
+
+    console.log(`[api/worker/command] Run ${runId} reseteado: ${chunkKeys.length} chunks → PENDING, status → IDLE`);
+  }
+
   // ── Acciones inmediatas para disable / resign_leader ──────────────────────
   if (
     payload.type === "worker" &&
