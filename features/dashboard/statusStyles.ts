@@ -6,6 +6,7 @@ export const runStatusStyles: Record<RunStatus, string> = {
   RUNNING: "bg-emerald-900/50 text-emerald-200",
   PAUSED: "bg-amber-900/50 text-amber-200",
   REBUILDING: "bg-blue-900/50 text-blue-200",
+  REDUCING: "bg-indigo-900/50 text-indigo-200",
   COMPLETED: "bg-emerald-900/50 text-emerald-200",
   FAILED: "bg-red-900/50 text-red-200",
   CANCELLED: "bg-red-900/50 text-red-200",

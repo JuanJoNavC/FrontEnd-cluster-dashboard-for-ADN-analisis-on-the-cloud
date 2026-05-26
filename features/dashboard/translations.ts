@@ -5,6 +5,7 @@ export const runStatusLabels: Record<RunStatus, string> = {
   PREPARING: "PREPARANDO",
   RUNNING: "EN EJECUCIÓN",
   PAUSED: "PAUSADO",
+  REDUCING: "REDUCIENDO",
   REBUILDING: "RECONSTRUYENDO",
   COMPLETED: "COMPLETADO",
   FAILED: "FALLIDO",
