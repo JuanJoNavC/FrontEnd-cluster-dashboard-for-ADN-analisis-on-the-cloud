@@ -62,7 +62,7 @@ export function ChunksTable({ chunks }: { chunks: ChunkInfo[] }) {
                 <td className="px-2 py-2">{chunk.matches !== null ? formatInt(chunk.matches) : "-"}</td>
                 <td className="px-2 py-2">{chunk.mismatches !== null ? formatInt(chunk.mismatches) : "-"}</td>
                 <td className="px-2 py-2">{chunk.attempts}</td>
-                <td className="px-2 py-2">{formatTimestamp(chunk.updatedAt)}</td>
+                <td className="px-2 py-2" suppressHydrationWarning>{formatTimestamp(chunk.updatedAt)}</td>
               </tr>
             ))}
           </tbody>

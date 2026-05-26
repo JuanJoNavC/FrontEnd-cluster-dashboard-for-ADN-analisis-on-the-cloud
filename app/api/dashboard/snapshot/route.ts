@@ -147,7 +147,9 @@ async function readSnapshotFromRedis(
         // El backend puede enviar cpu_usage, cpuUsage o cpu
         cpuUsagePercent: safeParseInt(data.cpuUsage ?? data.cpu_usage ?? data.cpu, 0),
         memoryUsagePercent: safeParseInt(data.memoryUsage ?? data.memory_usage ?? data.memory, 0),
-        gpuUsagePercent: data.gpuUsage != null ? safeParseInt(data.gpuUsage ?? data.gpu_usage ?? data.gpu, 0) : null,
+        gpuUsagePercent: (data.gpuUsagePercent ?? data.gpuUsage ?? data.gpu_usage ?? data.gpu) != null
+          ? safeParseInt(data.gpuUsagePercent ?? data.gpuUsage ?? data.gpu_usage ?? data.gpu, 0)
+          : null,
         concurrency: safeParseInt(data.concurrency, 1),
         activeJobs: safeParseInt(data.activeJobs ?? data.active_jobs, 0),
         completedJobs: safeParseInt(data.completedJobs ?? data.completed_jobs, 0),
