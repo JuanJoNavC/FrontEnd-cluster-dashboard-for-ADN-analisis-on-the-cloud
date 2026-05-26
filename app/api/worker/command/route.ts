@@ -143,7 +143,13 @@ export async function POST(request: NextRequest) {
       await pipeline.exec();
     }
 
-    // 2. Resetear stats del run
+    // 2. Limpiar el SET de chunks completados (usado por SCARD en el snapshot)
+    await redis.del(`runs:${runId}:chunks:done`);
+
+    // 3. Resetear el STRING de status (tiene prioridad sobre el HASH en el snapshot)
+    await redis.set(`runs:${runId}:status`, "IDLE");
+
+    // 4. Resetear stats HASH del run
     await redis.hset(KEYS.runStats(runId),
       "status", "IDLE",
       "completedChunks", "0",
@@ -153,7 +159,7 @@ export async function POST(request: NextRequest) {
       "pendingChunks", String(chunkKeys.length),
     );
 
-    // 3. Registrar evento
+    // 5. Registrar evento
     await redis.xadd(
       KEYS.eventsStream(runId), "*",
       "timestamp", timestamp,
