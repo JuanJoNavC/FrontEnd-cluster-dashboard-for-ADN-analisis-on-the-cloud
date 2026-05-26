@@ -11,9 +11,38 @@ import { useDashboardSnapshot } from "@/features/dashboard/useDashboardSnapshot"
 
 const RUN_ID = process.env.NEXT_PUBLIC_RUN_ID ?? "run-001";
 
+function SkeletonBlock({ className }: { className?: string }) {
+  return (
+    <div className={`animate-pulse rounded-xl bg-zinc-800/60 ${className ?? ""}`} />
+  );
+}
+
+function DashboardSkeleton() {
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Header */}
+      <SkeletonBlock className="h-16" />
+      {/* Overview cards */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <SkeletonBlock key={i} className="h-24" />
+        ))}
+      </div>
+      {/* Progress */}
+      <SkeletonBlock className="h-40" />
+      {/* Topology */}
+      <SkeletonBlock className="h-64" />
+      {/* Table */}
+      <SkeletonBlock className="h-48" />
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const { snapshot, source, loading, error, lastFetchedAt, refresh } =
     useDashboardSnapshot(RUN_ID);
+
+  const isInitialLoad = loading && !lastFetchedAt;
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-slate-950 to-zinc-900 px-4 py-6 text-zinc-100 sm:px-6 lg:px-10">
@@ -38,7 +67,7 @@ export default function DashboardPage() {
           </div>
           <div className="flex items-center gap-3">
             {lastFetchedAt && (
-              <span>
+              <span suppressHydrationWarning>
                 Actualizado:{" "}
                 {lastFetchedAt.toLocaleTimeString("es", {
                   hour: "2-digit",
@@ -50,27 +79,42 @@ export default function DashboardPage() {
             <button
               onClick={refresh}
               disabled={loading}
-              className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-800 disabled:opacity-50 transition-colors"
+              className="flex items-center gap-1.5 rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-800 disabled:opacity-50 transition-colors"
             >
-              {loading ? "Actualizando..." : "↻ Actualizar"}
+              {loading ? (
+                <>
+                  <svg className="animate-spin-slow h-3 w-3" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Actualizando…
+                </>
+              ) : "↻ Actualizar"}
             </button>
           </div>
         </div>
 
-        <ClusterHeader snapshot={snapshot} />
-        <RunOverviewCards snapshot={snapshot} />
-        <ProgressPanel snapshot={snapshot} />
-        <ClusterTopology snapshot={snapshot} runId={RUN_ID} />
-        <ChunksTable chunks={snapshot.chunks} />
-        <EventLog events={snapshot.events} />
-        <CommandPanel
-          runId={RUN_ID}
-          status={snapshot.run.status}
-          source={source}
-          leaderNodeId={snapshot.cluster.leaderNodeId}
-          processingChunks={snapshot.run.processingChunks}
-          completedChunks={snapshot.run.completedChunks}
-        />
+        {/* Skeleton en carga inicial */}
+        {isInitialLoad ? (
+          <DashboardSkeleton />
+        ) : (
+          <>
+            <ClusterHeader snapshot={snapshot} />
+            <RunOverviewCards snapshot={snapshot} />
+            <ProgressPanel snapshot={snapshot} />
+            <ClusterTopology snapshot={snapshot} runId={RUN_ID} />
+            <ChunksTable chunks={snapshot.chunks} />
+            <EventLog events={snapshot.events} />
+            <CommandPanel
+              runId={RUN_ID}
+              status={snapshot.run.status}
+              source={source}
+              leaderNodeId={snapshot.cluster.leaderNodeId}
+              processingChunks={snapshot.run.processingChunks}
+              completedChunks={snapshot.run.completedChunks}
+            />
+          </>
+        )}
       </div>
     </main>
   );
