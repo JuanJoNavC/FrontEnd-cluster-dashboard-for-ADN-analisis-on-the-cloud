@@ -27,6 +27,15 @@ async function sendRunCommand(runId: string, command: RunCommand): Promise<boole
   }
 }
 
+function Spinner() {
+  return (
+    <svg className="animate-spin-slow h-4 w-4" viewBox="0 0 24 24" fill="none">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+    </svg>
+  );
+}
+
 const STATUS_LABELS: Record<RunStatus, string> = {
   IDLE: "En espera",
   PREPARING: "Preparando",
@@ -100,7 +109,13 @@ export function CommandPanel({ runId, status, source, leaderNodeId, processingCh
             className="w-full rounded-lg border-2 border-emerald-500 bg-emerald-600/20 px-4 py-3 text-base font-bold text-emerald-300 hover:bg-emerald-600/40 transition-all disabled:opacity-60 flex items-center justify-center gap-2"
           >
             {sending === "start_run" ? (
-              <span className="animate-pulse">Enviando comando...</span>
+              <>
+                <svg className="animate-spin-slow h-5 w-5" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Enviando comando…
+              </>
             ) : (
               <><span>▶</span> Iniciar Procesamiento</>
             )}
@@ -116,7 +131,13 @@ export function CommandPanel({ runId, status, source, leaderNodeId, processingCh
           className="w-full mb-4 rounded-xl border-2 border-emerald-500 bg-emerald-600/20 px-6 py-4 text-lg font-bold text-emerald-300 hover:bg-emerald-600/40 hover:border-emerald-400 transition-all disabled:opacity-60 flex items-center justify-center gap-3"
         >
           {sending === "start_run" ? (
-            <span className="animate-pulse">Enviando comando...</span>
+            <>
+              <svg className="animate-spin-slow h-6 w-6 flex-shrink-0" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Enviando comando…
+            </>
           ) : (
             <>
               <span className="text-2xl">▶</span>
@@ -133,40 +154,40 @@ export function CommandPanel({ runId, status, source, leaderNodeId, processingCh
             <button
               onClick={() => handleCommand("pause_run", "Pausar run")}
               disabled={isLoading}
-              className="rounded-lg border border-amber-700 bg-amber-900/40 px-4 py-3 font-medium text-amber-200 hover:bg-amber-900/60 transition-all disabled:opacity-60"
+              className="rounded-lg border border-amber-700 bg-amber-900/40 px-4 py-3 font-medium text-amber-200 hover:bg-amber-900/60 transition-all disabled:opacity-60 flex items-center justify-center gap-2"
             >
-              {sending === "pause_run" ? "..." : "⏸ Pausar"}
+              {sending === "pause_run" ? <Spinner /> : "⏸ Pausar"}
             </button>
           )}
           {isPaused(effectiveStatus) && (
             <button
               onClick={() => handleCommand("resume_run", "Reanudar run")}
               disabled={isLoading}
-              className="rounded-lg border border-emerald-700 bg-emerald-900/40 px-4 py-3 font-medium text-emerald-200 hover:bg-emerald-900/60 transition-all disabled:opacity-60"
+              className="rounded-lg border border-emerald-700 bg-emerald-900/40 px-4 py-3 font-medium text-emerald-200 hover:bg-emerald-900/60 transition-all disabled:opacity-60 flex items-center justify-center gap-2"
             >
-              {sending === "resume_run" ? "..." : "▶ Reanudar"}
+              {sending === "resume_run" ? <Spinner /> : "▶ Reanudar"}
             </button>
           )}
           <button
             onClick={() => handleCommand("retry_failed", "Reintentar fallidos")}
             disabled={isLoading}
-            className="rounded-lg border border-blue-700 bg-blue-900/40 px-4 py-3 font-medium text-blue-200 hover:bg-blue-900/60 transition-all disabled:opacity-60"
+            className="rounded-lg border border-blue-700 bg-blue-900/40 px-4 py-3 font-medium text-blue-200 hover:bg-blue-900/60 transition-all disabled:opacity-60 flex items-center justify-center gap-2"
           >
-            {sending === "retry_failed" ? "..." : "🔄 Reintentar fallidos"}
+            {sending === "retry_failed" ? <Spinner /> : "🔄 Reintentar fallidos"}
           </button>
           <button
             onClick={() => handleCommand("rebuild_output", "Reconstruir output")}
             disabled={isLoading}
-            className="rounded-lg border border-cyan-700 bg-cyan-900/40 px-4 py-3 font-medium text-cyan-200 hover:bg-cyan-900/60 transition-all disabled:opacity-60"
+            className="rounded-lg border border-cyan-700 bg-cyan-900/40 px-4 py-3 font-medium text-cyan-200 hover:bg-cyan-900/60 transition-all disabled:opacity-60 flex items-center justify-center gap-2"
           >
-            {sending === "rebuild_output" ? "..." : "🔨 Reconstruir output"}
+            {sending === "rebuild_output" ? <Spinner /> : "🔨 Reconstruir output"}
           </button>
           <button
             onClick={() => handleCommand("cancel_run", "Cancelar run")}
             disabled={isLoading}
-            className="rounded-lg border border-red-700 bg-red-900/40 px-4 py-3 font-medium text-red-200 hover:bg-red-900/60 transition-all disabled:opacity-60"
+            className="rounded-lg border border-red-700 bg-red-900/40 px-4 py-3 font-medium text-red-200 hover:bg-red-900/60 transition-all disabled:opacity-60 flex items-center justify-center gap-2"
           >
-            {sending === "cancel_run" ? "..." : "❌ Cancelar run"}
+            {sending === "cancel_run" ? <Spinner /> : "❌ Cancelar run"}
           </button>
         </div>
       )}
