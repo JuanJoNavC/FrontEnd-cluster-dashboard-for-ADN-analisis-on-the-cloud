@@ -160,6 +160,139 @@ function WorkerCard({ worker, runId }: { worker: WorkerNode; runId: string }) {
   );
 }
 
+// ── Tarjeta del Líder ────────────────────────────────────────────────────────
+function LeaderCard({ leader, epoch, runId }: {
+  leader: WorkerNode | undefined;
+  epoch: number | null;
+  runId: string;
+}) {
+  const [lastAction, setLastAction] = useState<string | null>(null);
+  const [showConfirm, setShowConfirm] = useState<"disable" | "resign" | null>(null);
+
+  const handleAction = async (command: string, label: string) => {
+    setShowConfirm(null);
+    if (!leader) return;
+    setLastAction(`${label}...`);
+    try {
+      const res = await fetch("/api/worker/command", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "worker", command, nodeId: leader.nodeId, runId }),
+      });
+      setLastAction(res.ok ? `✓ ${label}` : `✗ Error al ejecutar`);
+    } catch {
+      setLastAction("✗ Sin conexión");
+    }
+  };
+
+  return (
+    <div className="mb-6">
+      <div className="relative rounded-2xl border-2 border-emerald-500 bg-gradient-to-br from-emerald-950/50 to-emerald-900/30 p-6 shadow-xl shadow-emerald-500/20">
+        <div className="absolute -top-3 left-4 bg-emerald-500 px-3 py-1 rounded-full text-xs font-bold text-black">
+          👑 LÍDER ACTIVO
+        </div>
+
+        {/* Acciones del líder */}
+        <div className="absolute top-4 right-4 flex gap-2">
+          <button
+            onClick={() => setShowConfirm("resign")}
+            className="text-[11px] px-2.5 py-1 rounded border border-amber-500/50 text-amber-300 hover:bg-amber-950/40 transition-colors"
+            title="Forzar reelección de líder"
+          >
+            🔁 Forzar reelección
+          </button>
+          <button
+            onClick={() => setShowConfirm("disable")}
+            className="text-[11px] px-2.5 py-1 rounded border border-red-500/50 text-red-300 hover:bg-red-950/40 transition-colors"
+            title="Deshabilitar líder y redistribuir carga"
+          >
+            🚫 Deshabilitar
+          </button>
+        </div>
+
+        {/* Diálogos de confirmación */}
+        {showConfirm === "resign" && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-zinc-950/90 backdrop-blur-sm">
+            <div className="rounded-xl border border-amber-500 bg-zinc-900 p-5 mx-4 text-center max-w-sm">
+              <p className="text-amber-300 font-semibold mb-1">¿Forzar reelección?</p>
+              <p className="text-zinc-400 text-xs mb-4">El líder actual resignará su rol y el nodo con mayor prioridad tomará el control.</p>
+              <div className="flex gap-3 justify-center">
+                <button onClick={() => setShowConfirm(null)} className="px-4 py-1.5 text-xs rounded border border-zinc-600 text-zinc-300 hover:bg-zinc-800">Cancelar</button>
+                <button onClick={() => handleAction("resign_leader", "Reelección forzada")} className="px-4 py-1.5 text-xs rounded bg-amber-600 hover:bg-amber-500 text-white font-medium">Confirmar</button>
+              </div>
+            </div>
+          </div>
+        )}
+        {showConfirm === "disable" && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-zinc-950/90 backdrop-blur-sm">
+            <div className="rounded-xl border border-red-500 bg-zinc-900 p-5 mx-4 text-center max-w-sm">
+              <p className="text-red-300 font-semibold mb-1">¿Deshabilitar líder?</p>
+              <p className="text-zinc-400 text-xs mb-4">Se eliminará el lock de liderazgo, sus chunks se redistribuirán, y el nodo pasará a DISABLED.</p>
+              <div className="flex gap-3 justify-center">
+                <button onClick={() => setShowConfirm(null)} className="px-4 py-1.5 text-xs rounded border border-zinc-600 text-zinc-300 hover:bg-zinc-800">Cancelar</button>
+                <button onClick={() => handleAction("disable", "Líder deshabilitado")} className="px-4 py-1.5 text-xs rounded bg-red-700 hover:bg-red-600 text-white font-medium">Deshabilitar</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-start justify-between pr-48">
+          <div>
+            <p className="text-2xl font-bold text-emerald-100">{leader?.nodeId ?? "Sin líder"}</p>
+            <div className="mt-2 flex gap-4 text-sm text-emerald-200">
+              <span>Época: {epoch}</span>
+              <span>Prioridad: {leader?.priority}</span>
+              <span>Jobs completados: {leader?.completedJobs}</span>
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-4xl">👑</div>
+            <p className="text-xs text-emerald-300 mt-1">{leader?.provider}</p>
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-3 gap-3">
+          <div className="rounded-lg bg-emerald-950/50 p-2">
+            <p className="text-xs text-emerald-400">CPU</p>
+            <p className="text-lg font-bold text-emerald-100">{leader?.cpuUsagePercent ?? 0}%</p>
+            <div className="mt-1 h-1.5 w-full rounded-full bg-emerald-950">
+              <div
+                className={`h-1.5 rounded-full ${(leader?.cpuUsagePercent ?? 0) >= 90 ? "bg-red-500" : (leader?.cpuUsagePercent ?? 0) >= 70 ? "bg-amber-400" : "bg-emerald-400"}`}
+                style={{ width: `${Math.min(leader?.cpuUsagePercent ?? 0, 100)}%` }}
+              />
+            </div>
+          </div>
+          <div className="rounded-lg bg-emerald-950/50 p-2">
+            <p className="text-xs text-emerald-400">Memoria</p>
+            <p className="text-lg font-bold text-emerald-100">{leader?.memoryUsagePercent ?? 0}%</p>
+            <div className="mt-1 h-1.5 w-full rounded-full bg-emerald-950">
+              <div
+                className={`h-1.5 rounded-full ${(leader?.memoryUsagePercent ?? 0) >= 90 ? "bg-red-500" : (leader?.memoryUsagePercent ?? 0) >= 70 ? "bg-amber-400" : "bg-violet-400"}`}
+                style={{ width: `${Math.min(leader?.memoryUsagePercent ?? 0, 100)}%` }}
+              />
+            </div>
+          </div>
+          <div className="rounded-lg bg-emerald-950/50 p-2">
+            <p className="text-xs text-emerald-400">Activos</p>
+            <p className="text-lg font-bold text-emerald-100">{leader?.activeJobs ?? 0}</p>
+          </div>
+        </div>
+        <div className="mt-2 flex gap-4 text-[11px] text-emerald-300/70 border-t border-emerald-900/50 pt-2">
+          <span>Concurrencia: <span className="text-emerald-200 font-medium">{leader?.concurrency ?? 1}</span></span>
+          <span>Completados: <span className="text-emerald-200 font-medium">{leader?.completedJobs ?? 0}</span></span>
+          {(leader?.failedJobs ?? 0) > 0 && (
+            <span className="text-red-300">Fallidos: <span className="font-medium">{leader?.failedJobs}</span></span>
+          )}
+          <span className="ml-auto">Heartbeat: {leader?.heartbeatAgeSeconds ?? 0}s</span>
+        </div>
+        {lastAction && (
+          <p className="mt-2 text-[11px] text-cyan-300">{lastAction}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function ClusterTopology({ snapshot, runId }: { snapshot: DashboardSnapshot; runId: string }) {
   const leader = snapshot.workers.find((w) => w.nodeId === snapshot.cluster.leaderNodeId);
   const workers = snapshot.workers.filter((w) => w.role !== "LEADER");
@@ -167,63 +300,8 @@ export function ClusterTopology({ snapshot, runId }: { snapshot: DashboardSnapsh
   return (
     <section className="rounded-xl border border-zinc-800 bg-zinc-950/80 p-6">
       <h2 className="text-lg font-semibold text-zinc-100 mb-4">Topología del Cluster</h2>
-      
-      {/* LÍDER - Grande y destacado */}
-      <div className="mb-6">
-        <div className="relative rounded-2xl border-2 border-emerald-500 bg-gradient-to-br from-emerald-950/50 to-emerald-900/30 p-6 shadow-xl shadow-emerald-500/20">
-          <div className="absolute -top-3 left-4 bg-emerald-500 px-3 py-1 rounded-full text-xs font-bold text-black">
-            👑 LÍDER ACTIVO
-          </div>
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-2xl font-bold text-emerald-100">{leader?.nodeId ?? "Sin líder"}</p>
-              <div className="mt-2 flex gap-4 text-sm text-emerald-200">
-                <span>Época: {snapshot.cluster.leaderEpoch}</span>
-                <span>Prioridad: {leader?.priority}</span>
-                <span>Jobs completados: {leader?.completedJobs}</span>
-              </div>
-            </div>
-            <div className="text-right">
-              <div className="text-4xl">👑</div>
-              <p className="text-xs text-emerald-300 mt-1">{leader?.provider}</p>
-            </div>
-          </div>
-          <div className="mt-4 grid grid-cols-3 gap-3">
-            <div className="rounded-lg bg-emerald-950/50 p-2">
-              <p className="text-xs text-emerald-400">CPU</p>
-              <p className="text-lg font-bold text-emerald-100">{leader?.cpuUsagePercent ?? 0}%</p>
-              <div className="mt-1 h-1.5 w-full rounded-full bg-emerald-950">
-                <div
-                  className={`h-1.5 rounded-full ${(leader?.cpuUsagePercent ?? 0) >= 90 ? "bg-red-500" : (leader?.cpuUsagePercent ?? 0) >= 70 ? "bg-amber-400" : "bg-emerald-400"}`}
-                  style={{ width: `${Math.min(leader?.cpuUsagePercent ?? 0, 100)}%` }}
-                />
-              </div>
-            </div>
-            <div className="rounded-lg bg-emerald-950/50 p-2">
-              <p className="text-xs text-emerald-400">Memoria</p>
-              <p className="text-lg font-bold text-emerald-100">{leader?.memoryUsagePercent ?? 0}%</p>
-              <div className="mt-1 h-1.5 w-full rounded-full bg-emerald-950">
-                <div
-                  className={`h-1.5 rounded-full ${(leader?.memoryUsagePercent ?? 0) >= 90 ? "bg-red-500" : (leader?.memoryUsagePercent ?? 0) >= 70 ? "bg-amber-400" : "bg-violet-400"}`}
-                  style={{ width: `${Math.min(leader?.memoryUsagePercent ?? 0, 100)}%` }}
-                />
-              </div>
-            </div>
-            <div className="rounded-lg bg-emerald-950/50 p-2">
-              <p className="text-xs text-emerald-400">Activos</p>
-              <p className="text-lg font-bold text-emerald-100">{leader?.activeJobs ?? 0}</p>
-            </div>
-          </div>
-          <div className="mt-2 flex gap-4 text-[11px] text-emerald-300/70 border-t border-emerald-900/50 pt-2">
-            <span>Concurrencia: <span className="text-emerald-200 font-medium">{leader?.concurrency ?? 1}</span></span>
-            <span>Completados: <span className="text-emerald-200 font-medium">{leader?.completedJobs ?? 0}</span></span>
-            {(leader?.failedJobs ?? 0) > 0 && (
-              <span className="text-red-300">Fallidos: <span className="font-medium">{leader?.failedJobs}</span></span>
-            )}
-            <span className="ml-auto">Heartbeat: {leader?.heartbeatAgeSeconds ?? 0}s</span>
-          </div>
-        </div>
-      </div>
+
+      <LeaderCard leader={leader} epoch={snapshot.cluster.leaderEpoch} runId={runId} />
 
       {/* WORKERS - Más pequeños, en grid */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 mb-6">
@@ -239,7 +317,7 @@ export function ClusterTopology({ snapshot, runId }: { snapshot: DashboardSnapsh
           <div className="flex-1">
             <p className="font-semibold text-cyan-100">Redis (Coordinador Central)</p>
             <p className="text-sm text-cyan-300">
-              {snapshot.cluster.aliveNodes} nodos conectados • 
+              {snapshot.cluster.aliveNodes} nodos conectados •{" "}
               {snapshot.cluster.redisConnected ? " CONECTADO" : " DESCONECTADO"}
             </p>
           </div>

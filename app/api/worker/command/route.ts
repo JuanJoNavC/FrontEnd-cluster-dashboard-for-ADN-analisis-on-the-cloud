@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 import redis from "@/lib/redis";
 import KEYS from "@/lib/redis-keys";
 
-type WorkerCommand = "pause" | "resume" | "drain" | "disable";
+type WorkerCommand = "pause" | "resume" | "drain" | "disable" | "resign_leader";
 type RunCommand = "start_run" | "pause_run" | "resume_run" | "retry_failed" | "rebuild_output" | "cancel_run";
 
 type CommandPayload =
@@ -12,7 +12,7 @@ type CommandPayload =
 
 // ─── Validación ──────────────────────────────────────────────────────────────
 
-const VALID_WORKER_COMMANDS: WorkerCommand[] = ["pause", "resume", "drain", "disable"];
+const VALID_WORKER_COMMANDS: WorkerCommand[] = ["pause", "resume", "drain", "disable", "resign_leader"];
 const VALID_RUN_COMMANDS: RunCommand[] = [
   "start_run",
   "pause_run",
@@ -124,6 +124,84 @@ export async function POST(request: NextRequest) {
 
   // Mantener el stream de eventos acotado (máx 200 entradas)
   await redis.xtrim(KEYS.eventsStream(payload.runId), "MAXLEN", "~", 200);
+
+  // ── Acciones inmediatas para disable / resign_leader ──────────────────────
+  if (
+    payload.type === "worker" &&
+    (payload.command === "disable" || payload.command === "resign_leader")
+  ) {
+    const { nodeId, runId } = payload;
+
+    // 1. Marcar el nodo como DISABLED en su heartbeat (efecto inmediato en UI)
+    const nodeRaw = await redis.get(KEYS.node(nodeId));
+    if (nodeRaw) {
+      try {
+        const nodeJson = JSON.parse(nodeRaw) as Record<string, unknown>;
+        nodeJson.status = "DISABLED";
+        await redis.setex(KEYS.node(nodeId), 30, JSON.stringify(nodeJson));
+      } catch { /* ignorar si el JSON es inválido */ }
+    }
+
+    // 2. Sacar del set de nodos activos
+    await redis.srem(KEYS.nodesActive, nodeId);
+
+    // 3. Resetear chunks PROCESSING de este nodo → PENDING (redistribuye carga)
+    const chunkKeys = await redis.keys(`chunk:${runId}:*`);
+    if (chunkKeys.length > 0) {
+      const pipeline = redis.pipeline();
+      for (const key of chunkKeys) {
+        // Necesitamos leer y filtrar; hacemos hgetall individual (son pocos chunks)
+        pipeline.hgetall(key);
+      }
+      const results = await pipeline.exec();
+      const resetPipeline = redis.pipeline();
+      let resetCount = 0;
+      results?.forEach((res, i) => {
+        const data = res?.[1] as Record<string, string> | null;
+        if (!data) return;
+        const worker = data.workerId ?? data.worker_id ?? "";
+        const status = data.status ?? "";
+        if (worker === nodeId && status === "PROCESSING") {
+          resetPipeline.hset(chunkKeys[i], "status", "PENDING", "workerId", "");
+          resetCount++;
+        }
+      });
+      if (resetCount > 0) {
+        await resetPipeline.exec();
+        // Actualizar stats del run: restar processingChunks, sumar pendingChunks
+        await redis.hincrby(KEYS.runStats(runId), "processingChunks", -resetCount);
+        await redis.hincrby(KEYS.runStats(runId), "pendingChunks", resetCount);
+        await redis.xadd(
+          KEYS.eventsStream(runId), "*",
+          "timestamp", new Date().toISOString(),
+          "severity", "warning",
+          "eventType", "chunks_redistributed",
+          "nodeId", nodeId,
+          "message", `${resetCount} chunk(s) de ${nodeId} reseteados a PENDING para redistribución`
+        );
+      }
+    }
+
+    // 4. Si este nodo es el líder actual → borrar el lock (fuerza reelección)
+    const leaderRaw = await redis.get(KEYS.leaderLock);
+    if (leaderRaw) {
+      try {
+        const leader = JSON.parse(leaderRaw) as Record<string, unknown>;
+        const leaderId = (leader.nodeId ?? leader.node_id) as string | undefined;
+        if (leaderId === nodeId) {
+          await redis.del(KEYS.leaderLock);
+          await redis.xadd(
+            KEYS.eventsStream(runId), "*",
+            "timestamp", new Date().toISOString(),
+            "severity", "warning",
+            "eventType", "leader_resigned",
+            "nodeId", nodeId,
+            "message", `Líder ${nodeId} deshabilitado — lock eliminado, reelección en curso`
+          );
+        }
+      } catch { /* ignorar */ }
+    }
+  }
 
   console.log(
     `[api/worker/command] Comando publicado: ${payload.command} → messageId=${messageId}`
